@@ -122,6 +122,65 @@ After step 5 produces real numbers, three possible outcomes:
 ADR-001 has the full argument. Pipeline C is not the only reason this
 project ships — Pipeline B already pays the bills.
 
+## Cross-repo dependencies
+
+`ulysses-jepa` runs against a single sibling-repo dependency that doesn't
+ship as a package yet:
+
+### Forward-Entropy-Benchmark — needed for tests + Pipeline E
+
+The `EntropyPredictor` abstraction (and its concrete implementations:
+`KirkEntropyPredictor`, `ParquetKirkPredictor`, `TiberiusKirkPredictor`,
+`KirkEntropyFromParquetPredictor`) lives in
+[`UlyssesModel/Forward-Entropy-Benchmark`](https://github.com/UlyssesModel/Forward-Entropy-Benchmark).
+It is consumed in `eval/predictor_baseline.py` (Pipeline E) and is
+**different from `KirkClient`** — see `DECISIONS.md` D-012 and
+`docs/adr/0002-kirk-client-vs-entropy-predictor.md`.
+
+The predictor repo has no `pyproject.toml`, so we shim its `scripts/`
+directory onto `sys.path`:
+
+  - **Local pytest:** `conftest.py` at the repo root inserts
+    `~/Forward-Entropy-Benchmark/scripts`. Clone the sibling repo
+    next to `ulysses-jepa/`:
+
+    ```bash
+    git clone git@github.com:UlyssesModel/Forward-Entropy-Benchmark.git ~/Forward-Entropy-Benchmark
+    git -C ~/Forward-Entropy-Benchmark checkout e2732baf07b55aad32fec635d4c4fef9759518e9
+    ```
+
+  - **Make targets:** `make test`, `make test-cov`, `make demo` all
+    set `PYTHONPATH=src:.:$(FE_BENCH)`. Override `FE_BENCH` if your
+    clone lives elsewhere.
+
+  - **CI:** `.github/workflows/ci.yml` clones the predictor repo at the
+    pinned commit and adds it to `PYTHONPATH`.
+
+Tests that need the predictor are skip-guarded — running pytest without
+the sibling repo present skips the Pipeline E tests cleanly rather than
+erroring. The other 120 tests are predictor-independent.
+
+**Transitive dep, FYI:** `Forward-Entropy-Benchmark/scripts/entropy_predictor.py`
+top-level-imports `hankel_adapter` and `ulysses_predictor` from a third
+sibling repo (`UlyssesModel/STAC-ML-Markets-Inference-Models`). Until
+that import is made lazy upstream, exercising Pipeline E end-to-end
+also requires:
+
+```bash
+git clone git@github.com:UlyssesModel/STAC-ML-Markets-Inference-Models.git \
+    ~/STAC-ML-Markets-Inference-Models
+```
+
+The predictor's `_MIRROR_CANDIDATES` block resolves the import once
+that clone is in place. Without it, our skip-guards fire and Pipeline E
+silently skips — which is the desired CI behavior on hosts where the
+STAC-ML mirror isn't provisioned.
+
+**Cleanup path:** when Forward-Entropy-Benchmark grows a `pyproject.toml`,
+drop `conftest.py`, drop `FE_BENCH` from the Makefile, drop the
+`actions/checkout` step from CI, and add the package as a normal
+dependency in `pyproject.toml`'s dev extras.
+
 ## Things that should NOT change without re-deciding
 
 Pinned by the architecture; updates need a new entry in `DECISIONS.md` and
