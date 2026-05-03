@@ -32,10 +32,9 @@ from typing import Optional
 
 
 _DEFAULT_FIELDS = {
-    "timestamp": "asctime",
-    "level": "levelname",
-    "logger": "name",
-    "message": "message",
+    "asctime": "timestamp",
+    "levelname": "level",
+    "name": "logger",
 }
 
 
@@ -44,16 +43,21 @@ def _build_dict_config(level: str) -> dict:
 
     Falls back to a plain formatter if python-json-logger isn't installed.
     """
+    formatter_cls: Optional[str] = None
     try:
-        import pythonjsonlogger.jsonlogger  # noqa: F401  (just to detect)
-        json_available = True
+        import pythonjsonlogger.json  # noqa: F401
+        formatter_cls = "pythonjsonlogger.json.JsonFormatter"
     except ImportError:
-        json_available = False
+        try:
+            import pythonjsonlogger.jsonlogger  # noqa: F401
+            formatter_cls = "pythonjsonlogger.jsonlogger.JsonFormatter"
+        except ImportError:
+            formatter_cls = None
 
-    if json_available:
+    if formatter_cls is not None:
         formatters = {
             "json": {
-                "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+                "()": formatter_cls,
                 "fmt": "%(asctime)s %(levelname)s %(name)s %(message)s",
                 "rename_fields": _DEFAULT_FIELDS,
                 "datefmt": "%Y-%m-%dT%H:%M:%S%z",

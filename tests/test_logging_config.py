@@ -119,7 +119,10 @@ def test_noisy_libs_set_to_warning(noisy):
 
 
 def test_extra_kwargs_appear_in_json_output_if_available():
-    pytest.importorskip("pythonjsonlogger.jsonlogger")
+    try:
+        importlib.import_module("pythonjsonlogger.json")
+    except ImportError:
+        pytest.importorskip("pythonjsonlogger.jsonlogger")
     # Replace stdout handler with one that writes to a StringIO so we can
     # inspect the output.
     logging_config.setup_logging()
