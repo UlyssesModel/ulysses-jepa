@@ -53,6 +53,8 @@ from typing import Any
 
 import torch
 import yaml
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 
 from ulysses_jepa.adapter import KirkProjectionAdapter
 from ulysses_jepa.injection import (
@@ -164,14 +166,6 @@ async def _lifespan(app):
 
 
 def _build_app():
-    try:
-        from fastapi import FastAPI, HTTPException, Request  # type: ignore
-        from fastapi.responses import JSONResponse, Response  # type: ignore
-    except ImportError as e:  # pragma: no cover
-        raise ImportError(
-            "fastapi is required for serve_kserve. Install with `pip install fastapi uvicorn`."
-        ) from e
-
     app = FastAPI(title="ulysses-jepa", lifespan=_lifespan)
 
     # ---- Prometheus metrics endpoint ----

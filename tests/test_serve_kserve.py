@@ -37,19 +37,20 @@ def _stub_pipeline(label="C"):
 
 
 @pytest.fixture
-def client(tmp_path):
-    """Build the FastAPI app with _state already populated (skip _lifespan)."""
+def client(monkeypatch):
+    """Build the FastAPI app with stub pipelines wired in via lifespan."""
     # Import here to defer fastapi import errors to skip-time
     from scripts import serve_kserve
 
-    # Inject stub pipelines directly into module state — avoids loading the
-    # real LLM (which needs a GPU + 31B-parameter model on disk) and a real
-    # Scotty endpoint for Pipelines A/B.
-    serve_kserve._state["pipeline"] = _stub_pipeline("C")
-    serve_kserve._state["pipeline_a"] = _stub_pipeline("A")
-    serve_kserve._state["pipeline_b"] = _stub_pipeline("B")
-    serve_kserve._state["ready"] = True
-    serve_kserve._state["model_version"] = "test"
+    # Patch _load_pipelines so lifespan succeeds without env vars / real LLM /
+    # real Scotty endpoint, and populates _state with our stubs.
+    pipes = {
+        "C": _stub_pipeline("C"),
+        "A": _stub_pipeline("A"),
+        "B": _stub_pipeline("B"),
+    }
+    monkeypatch.setattr(serve_kserve, "_load_pipelines", lambda: pipes)
+    monkeypatch.setitem(serve_kserve._state, "model_version", "test")
 
     app = serve_kserve._build_app()
     with TestClient(app) as c:
