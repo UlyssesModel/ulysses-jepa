@@ -1,4 +1,4 @@
-.PHONY: help install lint test test-cov pin-gemma distill-stub train-stub eval-stub sweep-stub serve clean image push openshift-apply openshift-delete
+.PHONY: help install lint test test-cov pin-gemma distill-stub distill-regime-shift train-stub eval-stub sweep-stub serve clean image push openshift-apply openshift-delete
 
 # Defaults
 PYTHON ?= python3
@@ -63,11 +63,17 @@ DEV_DATA   = data/distilled_dev.pt
 DEV_CKPT   = checkpoints/adapter.pt
 DEV_REPORT = reports/dev_eval.json
 DEV_SWEEP  = reports/sweep.csv
+ADR003_DATA = data/distilled_regime_shift.pt
 
 distill-stub: install  ## Generate a small stub-input distilled set against local Scotty
 	$(PY) scripts/distill_teacher.py \
 		--output $(DEV_DATA) \
 		--use-stub-input --num-streams 32 --windows-per-stream 4 --n 32
+
+distill-regime-shift: install  ## ADR-003: distill stationary + 3σ-shift streams via gemma4:31b
+	PYTHONPATH=src:. $(PY) scripts/distill_regime_shift.py \
+		--output $(ADR003_DATA) \
+		--n-streams-per-regime 5
 
 train-stub: install distill-stub  ## Train the adapter on stub Kirk + local Scotty teacher
 	$(PY) scripts/train.py \
