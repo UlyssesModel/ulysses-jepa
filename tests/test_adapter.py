@@ -55,7 +55,7 @@ def test_streaming_concatenates():
 
 
 def test_gradient_flows_to_adapter():
-    cfg = AdapterConfig(n=4, llm_hidden_dim=32, hidden_dim=16)
+    cfg = AdapterConfig(n=4, llm_hidden_dim=64, hidden_dim=16)
     adapter = KirkProjectionAdapter(cfg)
     a = torch.randn(1, 4, 4)
     v = torch.randn(1, 8)
