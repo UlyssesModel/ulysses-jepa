@@ -87,7 +87,12 @@ class _MockHFModel(nn.Module):
         return self.embed
 
     def forward(self, inputs_embeds=None, labels=None, attention_mask=None):
-        logits = self.lm_head(inputs_embeds)  # (B, T, V)
+        # Mix positions so every output position depends on every input
+        # position — proxy for the causal attention a real transformer
+        # has. Without this, gradient at target-position tokens never
+        # reaches the kirk-embed positions, so the adapter never trains.
+        mixed = inputs_embeds + inputs_embeds.mean(dim=1, keepdim=True)
+        logits = self.lm_head(mixed)  # (B, T, V)
         loss = None
         if labels is not None:
             shift_logits = logits[..., :-1, :].contiguous()
