@@ -14,3 +14,9 @@ import sys
 _FE_BENCH = os.path.expanduser("~/Forward-Entropy-Benchmark/scripts")
 if os.path.isdir(_FE_BENCH) and _FE_BENCH not in sys.path:
     sys.path.insert(0, _FE_BENCH)
+
+# Hankel adapter dependency — Forward-Entropy-Benchmark's entropy_predictor
+# imports hankel_adapter from this sibling repo at module load time.
+_HANKEL = os.path.expanduser("~/STAC-ML-Markets-Inference-Models")
+if os.path.isdir(_HANKEL) and _HANKEL not in sys.path:
+    sys.path.insert(0, _HANKEL)
