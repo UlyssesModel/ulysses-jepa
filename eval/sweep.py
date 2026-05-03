@@ -62,16 +62,16 @@ class SweepGrid:
     n_values: list[int] = field(default_factory=lambda: [16, 32])
     hidden_dim_values: list[int] = field(default_factory=lambda: [512, 1024, 2048])
     use_complex_values: list[bool] = field(default_factory=lambda: [False])
-    # Pipeline E ("E_predictor_baseline") is a recognized cell value but is
-    # off-by-default in `configs/sweep_default.yaml`. Opt in by listing it
-    # in your own grid YAML; running E in the sweep also requires extending
-    # `_eval_config` with a predictor-builder hook (see comment there).
     pipelines: list[str] = field(default_factory=lambda: [
         "A_tokenized",
         "B_compressed_text",
         "C_embedding_injection",
         "E_predictor_baseline",
     ])
+    # Pipeline E predictor spec: {"class": "<name>", "kwargs": {...}}. When
+    # None, falls back to a research-tier KirkEntropyPredictor (no external
+    # deps). See `_build_predictor` for the dispatch table.
+    predictor: Optional[dict[str, Any]] = None
 
     def __iter__(self) -> Iterable[dict[str, Any]]:
         for n, h, c, p in itertools.product(
@@ -98,6 +98,39 @@ def load_grid(path: Optional[str]) -> SweepGrid:
         hidden_dim_values=data.get("hidden_dim_values", SweepGrid().hidden_dim_values),
         use_complex_values=data.get("use_complex_values", SweepGrid().use_complex_values),
         pipelines=data.get("pipelines", SweepGrid().pipelines),
+        predictor=data.get("predictor"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Predictor factory (Pipeline E)
+# ---------------------------------------------------------------------------
+
+
+def _build_predictor(spec: Optional[dict[str, Any]]) -> Any:
+    """Build an EntropyPredictor instance from a config spec.
+
+    Default (spec is None or empty): research-tier ``KirkEntropyPredictor``
+    with no external deps. Otherwise dispatch by ``spec["class"]`` and pass
+    ``spec.get("kwargs", {})`` to the constructor.
+
+    Imports are deferred so this module loads cleanly on hosts that don't
+    have Forward-Entropy-Benchmark on sys.path.
+    """
+    class_name = (spec or {}).get("class") or "KirkEntropyPredictor"
+    kwargs = (spec or {}).get("kwargs") or {}
+    if class_name == "KirkEntropyPredictor":
+        from entropy_predictor import KirkEntropyPredictor
+        return KirkEntropyPredictor(**kwargs)
+    if class_name == "ParquetKirkPredictor":
+        from parquet_kirk import ParquetKirkPredictor
+        return ParquetKirkPredictor(**kwargs)
+    if class_name == "TiberiusKirkPredictor":
+        from tiberius_client import TiberiusKirkPredictor
+        return TiberiusKirkPredictor(**kwargs)
+    raise ValueError(
+        f"Unknown predictor class {class_name!r}; expected one of "
+        "KirkEntropyPredictor, ParquetKirkPredictor, TiberiusKirkPredictor"
     )
 
 
@@ -113,6 +146,7 @@ def _eval_config(
     llm_cfg: Optional[LLMConfig],
     scotty: Optional[ScottyClient],
     max_new_tokens: int,
+    predictor_spec: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Run one (n, hidden_dim, use_complex, pipeline) cell of the grid."""
 
@@ -124,22 +158,10 @@ def _eval_config(
     run_c = cfg["pipeline"] == "C_embedding_injection"
     run_e = cfg["pipeline"] == "E_predictor_baseline"
 
-    # Pipeline E in the sweep is opt-in only and needs an EntropyPredictor
-    # instance — there's no canonical builder we can pick without choosing
-    # a flavour (parquet replay vs. live Tiberius vs. research-stub). Wire
-    # this when the sweep needs it; for now any cell that asks for E fails
-    # cleanly via the main loop's exception-logging.
-    if run_e:
-        raise NotImplementedError(
-            "Pipeline E is recognised as a sweep cell but `_eval_config` "
-            "does not yet construct a predictor — extend with a "
-            "--predictor-config flag, or call `EvalHarness` directly with "
-            "your chosen EntropyPredictor instance. See ADR-002."
-        )
-
     # Stub Kirk for the sweep — once the real Kirk wheel is wired, swap to
     # KirkPipelineClient. The grid is what matters; the data source stays.
     kirk = StubKirkClient(n=cfg["n"], use_complex=cfg["use_complex"])
+    predictor = _build_predictor(predictor_spec) if run_e else None
 
     adapter = None
     llm = None
@@ -163,10 +185,12 @@ def _eval_config(
         adapter=adapter,
         llm=llm,
         scotty=scotty,
+        predictor=predictor,
         config=HarnessConfig(
             run_pipeline_a=run_a,
             run_pipeline_b=run_b,
             run_pipeline_c=run_c,
+            run_pipeline_e=run_e,
             max_new_tokens=max_new_tokens,
         ),
     )
@@ -283,6 +307,7 @@ def main():
                 llm_cfg=llm_cfg,
                 scotty=scotty,
                 max_new_tokens=args.max_new_tokens,
+                predictor_spec=grid.predictor,
             )
         except Exception as e:
             print(f"[sweep] cell {i}/{len(grid)} FAILED: {e}")
