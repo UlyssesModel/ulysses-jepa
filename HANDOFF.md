@@ -3,6 +3,17 @@
 > **Status:** v0.1 build complete. 63 files, ~7K lines Python, 105 test
 > cases passing locally. All Phase-0 questions resolved. Solo execution.
 
+## Cross-repo / cross-host topology
+
+Where work happens and which box owns which role:
+
+| Host | Role |
+| --- | --- |
+| **IvorHQ** (WSL2 Ubuntu) | Primary dev box. `ulysses-jepa` working tree alongside its `Forward-Entropy-Benchmark` and `STAC-ML-Markets-Inference-Models` siblings. CPU-only test runs land here. |
+| **scotty-gpu** (GCP us-central1-a, Tailscale `100.120.101.79`) | Gemma serving box. Ollama on `scotty-gpu:11434` hosts Gemma 4 31B + 26B and Gemma 3 12B. Teacher LLM for distillation; live target for `make pin-gemma`. |
+| **ny5ulysses01** | Production TDX host. Owns the **Kirk model IP vault** (TDX domain on port 2250). This duty does **not** live on scotty-gpu — see `ts_sor_base-1` for the canonical wiring. |
+| **tdx-amx-node-octo** | Production benchmark + integration-test target. Where `tests/test_kirk_pipeline_integration.py` actually fires (and where the `_run_layer2` schema check has teeth). |
+
 ## What's real and runnable today
 
 | Path | How to run | What it proves |
@@ -15,19 +26,7 @@
 
 ## What's stubbed and needs filling in
 
-### 1. Gemma 4 31B `hidden_size`
-
-`5376` placeholder in `configs/adapter_default.yaml` and `configs/llm_gemma4.yaml`.
-Auto-pin once Ollama has gemma4:31b pulled:
-
-```bash
-make pin-gemma
-```
-
-The script queries Ollama's `/api/show` endpoint, falls back to HuggingFace
-config lookup if needed, updates both YAMLs in place, leaves `.bak` files.
-
-### 2. `KirkPipelineClient._run_layer2` output schema
+### 1. `KirkPipelineClient._run_layer2` output schema
 
 The integration test at `tests/test_kirk_pipeline_integration.py` is the
 load-bearing safety net here. It runs only when `kirk_pipeline` is importable
@@ -41,7 +40,7 @@ If the real return is a tuple, dataclass, or different keys, the test points
 at exactly which line of `KirkPipelineClient._run_layer2` to fix. ~1 hour
 of work.
 
-### 3. Real distillation dataset
+### 2. Real distillation dataset
 
 The training path runs end-to-end against synthetic data and a teacher LLM
 (Scotty/Ollama works as the teacher in dev). For real numbers:
@@ -62,20 +61,20 @@ python scripts/label_regimes.py \
 
 Cost estimate: ~1K labeled streams at Opus pricing is ~$5–20.
 
-### 4. KServe predictor entry point — DONE
+### 3. KServe predictor entry point — DONE
 
 `scripts/serve_kserve.py` is a real FastAPI server with three routes
 (Pipelines A/B/C) and a `/metrics` endpoint. 16 test cases covering happy
 paths and error paths.
 
-### 5. Streaming Kafka consumer — DONE
+### 4. Streaming Kafka consumer — DONE
 
 `scripts/stream_consumer.py` consumes Uhura tensor frames, runs the
 pipeline, publishes narrations to a downstream topic. Strimzi mTLS,
 cooperative-sticky rebalancing, idempotent producer, structured logging,
 Prometheus metrics on a separate port.
 
-### 6. Container image build — TODO
+### 5. Container image build — TODO
 
 `quay.io/kavara/ulysses-jepa:v0.1` is referenced in the OpenShift manifests
 but not built yet. Build with:
@@ -88,7 +87,8 @@ Requires podman + quay.io credentials.
 
 ## Critical-path order of operations
 
-1. **Pin Gemma 4 31B hidden dim** — `make pin-gemma`. Five-minute job.
+1. ~~**Pin Gemma 4 31B hidden dim**~~ — **DONE.** Confirmed `5376` against
+   live Ollama on `scotty-gpu:11434` (commit `43a7da4`); both YAMLs match.
 2. **Validate the adapter trains end-to-end on stub data** —
    `make distill-stub && make train-stub && make eval-stub`. Exercises the
    gradient path through frozen LLM. Use a smaller LLM for first run if
