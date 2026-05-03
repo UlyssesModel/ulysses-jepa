@@ -10,3 +10,7 @@ pipelines:
   - A_tokenized
   - B_compressed_text
   - C_embedding_injection
+  # E_predictor_baseline is recognized but off-by-default — opt in by
+  # uncommenting (also requires extending eval/sweep.py:_eval_config with
+  # a predictor builder; see DECISIONS.md D-012 + ADR-002).
+  # - E_predictor_baseline

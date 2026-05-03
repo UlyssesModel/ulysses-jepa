@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 import torch
 
@@ -43,11 +43,13 @@ class HarnessConfig:
     run_pipeline_b: bool = True
     run_pipeline_c: bool = True
     run_hmm_baseline: bool = False  # Pipeline D — populated when an HMM is provided
+    run_pipeline_e: bool = False  # Pipeline E — populated when an EntropyPredictor is provided
     pricing: PricingModel = PricingModel()
     max_new_tokens: int = 256
     pipeline_a_tier: str = "frontier"
     pipeline_b_tier: str = "small"
     pipeline_c_tier: str = "small"
+    predictor_horizon: int = 1
 
 
 class EvalHarness:
@@ -60,13 +62,19 @@ class EvalHarness:
         llm: Optional[EmbeddingInjectionLLM] = None,
         scotty: Optional[ScottyClient] = None,
         hmm: Optional[GaussianHMM] = None,
+        predictor: Optional[Any] = None,
         config: HarnessConfig = HarnessConfig(),
     ):
+        # `predictor` is a duck-typed Forward-Entropy-Benchmark
+        # `EntropyPredictor` (see DECISIONS.md D-012, ADR-002). We don't
+        # import the ABC here so the harness loads cleanly on hosts that
+        # don't have the predictor repo on sys.path.
         self.kirk = kirk
         self.adapter = adapter
         self.llm = llm
         self.scotty = scotty
         self.hmm = hmm
+        self.predictor = predictor
         self.config = config
 
         # Wire up the pipeline objects on demand
@@ -211,6 +219,18 @@ class EvalHarness:
                     regime_correct=regime_correct,
                     cost_usd=0.0,  # HMM is local CPU; effectively free
                     notes=f"HMM regime classifier ({len(self.hmm.state_names)} states)",
+                )
+            )
+
+        # ---- Pipeline E: EntropyPredictor baseline (forward-entropy forecast) ----
+        if self.config.run_pipeline_e and self.predictor is not None:
+            from .predictor_baseline import score_with_predictor
+            kos = self.kirk.infer_stream(item.tensors)
+            records.append(
+                score_with_predictor(
+                    self.predictor,
+                    kos,
+                    horizon=self.config.predictor_horizon,
                 )
             )
 
