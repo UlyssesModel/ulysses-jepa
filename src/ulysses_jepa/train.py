@@ -164,7 +164,7 @@ class Trainer:
         loader = DataLoader(ds, batch_size=1, shuffle=True, collate_fn=_collate_singleton)
 
         import time as _time
-        scaler = torch.cuda.amp.GradScaler(enabled=self.amp_enabled)
+        scaler = torch.amp.GradScaler("cuda", enabled=self.amp_enabled)
         step = 0
         for epoch in range(self.config.num_epochs):
             metrics.train_epoch.set(epoch)
@@ -172,7 +172,7 @@ class Trainer:
             running_loss = 0.0
             for i, item in enumerate(loader):
                 step_t0 = _time.perf_counter()
-                with torch.cuda.amp.autocast(enabled=self.amp_enabled, dtype=torch.bfloat16):
+                with torch.amp.autocast("cuda", enabled=self.amp_enabled, dtype=torch.bfloat16):
                     inputs_embeds, labels, attention_mask = self._build_inputs(item)
                     out = self.llm.forward_with_embeds(
                         inputs_embeds=inputs_embeds,
