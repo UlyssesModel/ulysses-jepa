@@ -1,0 +1,6 @@
+# Scotty / Ollama endpoint config for Pipeline B (compressed text).
+# Mirrors the defaults in github.com/UlyssesModel/scotty.
+
+base_url: "http://127.0.0.1:11434"
+model: "gemma4:31b"
+timeout_s: 120

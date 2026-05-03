@@ -1,0 +1,12 @@
+# LLM serving config for the embedding-injection path.
+#
+# This points at a Gemma 4 31B served via HuggingFace Transformers (NOT via
+# Ollama / Scotty — Ollama's API doesn't accept inputs_embeds).
+#
+# For the production text path (Pipeline B) use scotty.yaml instead.
+
+model_name: "google/gemma-4-31b"   # Verify exact HF model id once Gemma 4 31B lands publicly
+hidden_dim: 5376                    # Verify against the model's config.json
+dtype: "bfloat16"
+device: "cuda"
+trust_remote_code: false

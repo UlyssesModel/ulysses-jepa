@@ -1,0 +1,45 @@
+# PodMonitor for UWM Prometheus to auto-scrape ulysses-jepa pods.
+#
+# Mirrors the pattern used by tiberius-openshift's `ulysses-sor` (where the
+# Phase 3A KServe wrapper exposes /metrics on the same port as /v2/*).
+#
+# Once this is applied + the UWM operator is enabled on the cluster, the
+# metrics show up in the in-cluster Prometheus + Grafana automatically.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: ulysses-jepa
+  namespace: kavara-ai
+  labels:
+    app: ulysses-jepa
+spec:
+  selector:
+    matchLabels:
+      app: ulysses-jepa-streamer  # streamers
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+  namespaceSelector:
+    matchNames:
+      - kavara-ai
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: ulysses-jepa-inference
+  namespace: kavara-ai
+  labels:
+    app: ulysses-jepa-inference
+spec:
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: ulysses-jepa
+  podMetricsEndpoints:
+    - port: kserve-container       # KServe container port
+      path: /metrics
+      interval: 15s
+  namespaceSelector:
+    matchNames:
+      - kavara-ai
