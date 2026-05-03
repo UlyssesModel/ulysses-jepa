@@ -30,8 +30,9 @@ from eval.sweep import (
 
 def test_grid_default_has_expected_size():
     grid = SweepGrid()
-    # 2 n × 3 hidden_dim × 1 complex × 3 pipelines = 18
-    assert len(grid) == 2 * 3 * 1 * 3
+    # 2 n × 3 hidden_dim × 1 complex × 4 pipelines (A/B/C + opt-in E) = 24
+    assert len(grid) == 2 * 3 * 1 * 4
+    assert "E_predictor_baseline" in grid.pipelines
 
 
 def test_grid_iter_produces_all_cells():

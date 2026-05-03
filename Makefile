@@ -9,6 +9,12 @@ IMAGE  ?= quay.io/kavara/ulysses-jepa
 TAG    ?= v0.1
 NS     ?= kavara-ai
 
+# Forward-Entropy-Benchmark scripts dir — sibling repo, no packaging yet,
+# so we expose it via PYTHONPATH for test/demo targets. See conftest.py
+# (which mirrors this for direct pytest invocations) and HANDOFF.md
+# "Cross-repo dependencies" for the cleanup path.
+FE_BENCH ?= $(HOME)/Forward-Entropy-Benchmark/scripts
+
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
@@ -28,10 +34,10 @@ lint: install  ## Lint with ruff
 	$(PY) -m ruff check src eval scripts tests
 
 test: install  ## Run pytest (no GPU needed)
-	$(PY) -m pytest tests -v
+	PYTHONPATH=src:.:$(FE_BENCH) $(PY) -m pytest tests -v
 
 test-cov: install  ## Run pytest with coverage
-	$(PY) -m pytest tests -v --cov=ulysses_jepa --cov-report=term-missing
+	PYTHONPATH=src:.:$(FE_BENCH) $(PY) -m pytest tests -v --cov=ulysses_jepa --cov-report=term-missing
 
 # ---------------------------------------------------------------------------
 # One-shot config + plumbing
@@ -105,7 +111,7 @@ compose-logs:  ## Tail logs from the predictor container
 	docker compose logs -f ulysses-jepa-predictor
 
 demo: install preflight distill-stub label-regimes train-stub eval-stub sweep-stub  ## Full plumbing demo: produces reports/demo.html
-	$(PY) scripts/render_demo_report.py \
+	PYTHONPATH=src:.:$(FE_BENCH) $(PY) scripts/render_demo_report.py \
 		--eval-json $(DEV_REPORT) \
 		--sweep-csv $(DEV_SWEEP) \
 		--out reports/demo.html

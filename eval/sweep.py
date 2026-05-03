@@ -62,7 +62,16 @@ class SweepGrid:
     n_values: list[int] = field(default_factory=lambda: [16, 32])
     hidden_dim_values: list[int] = field(default_factory=lambda: [512, 1024, 2048])
     use_complex_values: list[bool] = field(default_factory=lambda: [False])
-    pipelines: list[str] = field(default_factory=lambda: ["A_tokenized", "B_compressed_text", "C_embedding_injection"])
+    # Pipeline E ("E_predictor_baseline") is a recognized cell value but is
+    # off-by-default in `configs/sweep_default.yaml`. Opt in by listing it
+    # in your own grid YAML; running E in the sweep also requires extending
+    # `_eval_config` with a predictor-builder hook (see comment there).
+    pipelines: list[str] = field(default_factory=lambda: [
+        "A_tokenized",
+        "B_compressed_text",
+        "C_embedding_injection",
+        "E_predictor_baseline",
+    ])
 
     def __iter__(self) -> Iterable[dict[str, Any]]:
         for n, h, c, p in itertools.product(
@@ -113,6 +122,20 @@ def _eval_config(
     run_a = cfg["pipeline"] == "A_tokenized"
     run_b = cfg["pipeline"] == "B_compressed_text"
     run_c = cfg["pipeline"] == "C_embedding_injection"
+    run_e = cfg["pipeline"] == "E_predictor_baseline"
+
+    # Pipeline E in the sweep is opt-in only and needs an EntropyPredictor
+    # instance — there's no canonical builder we can pick without choosing
+    # a flavour (parquet replay vs. live Tiberius vs. research-stub). Wire
+    # this when the sweep needs it; for now any cell that asks for E fails
+    # cleanly via the main loop's exception-logging.
+    if run_e:
+        raise NotImplementedError(
+            "Pipeline E is recognised as a sweep cell but `_eval_config` "
+            "does not yet construct a predictor — extend with a "
+            "--predictor-config flag, or call `EvalHarness` directly with "
+            "your chosen EntropyPredictor instance. See ADR-002."
+        )
 
     # Stub Kirk for the sweep — once the real Kirk wheel is wired, swap to
     # KirkPipelineClient. The grid is what matters; the data source stays.

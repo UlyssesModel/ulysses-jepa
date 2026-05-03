@@ -177,3 +177,48 @@ tick. Batching at this layer keeps end-to-end latency bounded (4 windows ×
 the LLM call dense (more soft tokens per call → better GPU utilization).
 
 **Source:** uhura streamer pattern; conversation 2026-05-02.
+
+## D-012 EntropyPredictor and KirkClient are different abstractions
+**Decided:** 2026-05-02
+
+**What:** ulysses-jepa keeps `KirkClient` (and the `Stub` / `Pipeline` /
+`Subprocess` implementations in `src/ulysses_jepa/kirk_client.py`) for the
+projection-adapter input path. Forward-Entropy-Benchmark's
+`EntropyPredictor` is a *separate* dependency, used only in `eval/`
+(`Pipeline E`, see `eval/predictor_baseline.py`) as a forecast-quality
+baseline alongside the HMM (`D_hmm_baseline`).
+
+**Why:** an initial framing assumed these were duplicate abstractions
+that could be consolidated. They aren't:
+
+  - `KirkClient.infer(tensor: torch.Tensor) -> KirkOutput` — N×N tensor
+    in, the full Layer-2 trio (Array, Vector, Scalar) out. This is the
+    projection adapter's input contract per D-006.
+  - `EntropyPredictor.predict(observations: np.ndarray, horizon: int) -> np.ndarray` —
+    1-D observation prefix in, `(K,)` forward-entropy estimate out.
+    Forward-entropy benchmark scoring.
+
+Different inputs, different outputs, different jobs. Forcing them into
+one abstraction would lose the projection-adapter's input contract
+entirely (the predictor doesn't surface the layer-2 reconstruction the
+adapter consumes). They compose by being used in different parts of the
+pipeline, not by inheritance.
+
+**D-007 is not superseded.** ulysses-jepa remains a sibling repo that
+defines `KirkClient` locally because no upstream owns that abstraction
+yet. Forward-Entropy-Benchmark owns the `EntropyPredictor` abstraction
+because that's where it's authored and exercised.
+
+**Future:** if Forward-Entropy-Benchmark grows a method on
+`TiberiusKirkPredictor` (e.g. `infer_layer2(tensor) -> dict` with
+reconstruction / marginals / entropy) that produces ulysses-jepa-compatible
+output, revisit consolidation. ADR-002 captures the conceptual
+distinction in more depth.
+
+**Source:** conversation 2026-05-02. Forward-Entropy-Benchmark inspected
+at commit `e2732baf07b55aad32fec635d4c4fef9759518e9` —
+`EntropyPredictor.predict()` returns a `(K,)` entropy vector only; no
+layer-2 reconstruction surface. Concrete implementations:
+`KirkEntropyPredictor` (`IS_PRODUCTION_KIRK=False`), `ParquetKirkPredictor`
++ `TiberiusKirkPredictor` + `KirkEntropyFromParquetPredictor`
+(`IS_PRODUCTION_KIRK=True`).

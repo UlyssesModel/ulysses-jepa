@@ -57,6 +57,16 @@ jobs:
         python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
+      - name: Clone Forward-Entropy-Benchmark (predictor abstraction)
+        # Pinned to e2732baf0 — see DECISIONS.md D-012 + ADR-002. The
+        # predictor repo has no packaging yet, so we put its scripts dir
+        # on PYTHONPATH for tests. Update the SHA when D-012's "future
+        # consolidation" path lights up upstream.
+        uses: actions/checkout@v4
+        with:
+          repository: UlyssesModel/Forward-Entropy-Benchmark
+          ref: e2732baf07b55aad32fec635d4c4fef9759518e9
+          path: Forward-Entropy-Benchmark
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -67,11 +77,15 @@ jobs:
           # Install CPU-only torch index first to avoid pulling CUDA wheels.
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[scotty,kafka,serve,dev]"
+          # Forward-Entropy-Benchmark's runtime deps that aren't already
+          # transitively pulled in by ulysses-jepa.
+          pip install pandas pyarrow requests
           # Skip [llm] in CI — transformers + accelerate is heavyweight and
           # the LLM-loading code paths are stub-tested elsewhere.
       - name: Run pytest
         run: |
-          PYTHONPATH=src pytest tests -v --tb=short \
+          PYTHONPATH=src:.:${{ github.workspace }}/Forward-Entropy-Benchmark/scripts \
+            pytest tests -v --tb=short \
             --ignore=tests/test_kirk_pipeline_integration.py
           # The kirk-pipeline integration test is skip-conditional on having
           # the production wheel; explicitly ignore its discovery in CI.
